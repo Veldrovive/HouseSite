@@ -1,20 +1,39 @@
 <template>
   <div id="app">
-    <img alt="Vue logo" src="./assets/logo.png">
-    <HelloWorld msg="Welcome to Your Vue.js App"/>
+    <TopBar/>
+    <div id="mainContainer">
+      <router-view></router-view>
+    </div>
   </div>
 </template>
 
 <script>
-import HelloWorld from './components/HelloWorld.vue'
+import { mapActions } from 'vuex'
+import TopBar from './components/TopBar.vue'
 
 export default {
   name: 'App',
   components: {
-    HelloWorld
+    TopBar
+  },
+  created: function() {
+    this.getOldTrips();
+  },
+  methods: {
+    ...mapActions("items", ["getOldTrips"]),
   }
 }
 </script>
+
+<style scoped>
+#mainContainer {
+  margin: 0 15vw 0 15vw;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: #ecf0f1;
+}
+</style>
 
 <style>
 #app {
@@ -23,6 +42,10 @@ export default {
   -moz-osx-font-smoothing: grayscale;
   text-align: center;
   color: #2c3e50;
-  margin-top: 60px;
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
 }
 </style>
