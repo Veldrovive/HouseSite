@@ -1,6 +1,6 @@
 <template>
     <div id="itemsContainer">
-        <b-table-simple striped bordered hover @keyup.enter="deselect()">
+        <b-table-simple striped bordered hover @keyup.enter="deselect()" sticky-header="75vh">
             <b-thead>
                 <b-tr>
                     <b-th>Item Name</b-th>

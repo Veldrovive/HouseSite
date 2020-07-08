@@ -1,7 +1,7 @@
 <template>
     <div id="sContainer">
             <b-card bg-variant="light" header="Total Cost">
-                <b-card-text>${{ currTotalCost.toFixed(2) }}</b-card-text>
+                <b-card-text>${{ (currTotalCost*1.13).toFixed(2) }} (${{ currTotalCost.toFixed(2) }})</b-card-text>
             </b-card>
 
             <b-card bg-variant="light" header="Individual Costs" id="indivCostCard">
@@ -10,7 +10,7 @@
                         <b-tbody>
                             <b-tr v-for="(person, index) in currIndivCost" :key="index">
                                 <b-td>{{ person.name}}</b-td>
-                                <b-td>${{ person.cost.toFixed(2) }}</b-td>
+                                <b-td>${{ (person.cost*1.13).toFixed(2) }} (${{ person.cost.toFixed(2) }})</b-td>
                             </b-tr>
                         </b-tbody>
                     </b-table-simple>

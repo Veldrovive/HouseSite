@@ -8,7 +8,7 @@
 </template>
 
 <script>
-import { mapActions } from 'vuex'
+import { mapActions, mapMutations } from 'vuex'
 import TopBar from './components/TopBar.vue'
 
 export default {
@@ -18,9 +18,11 @@ export default {
   },
   created: function() {
     this.getOldTrips();
+    this.recallTripFromLS();
   },
   methods: {
     ...mapActions("items", ["getOldTrips"]),
+    ...mapMutations("items", ["recallTripFromLS"])
   }
 }
 </script>

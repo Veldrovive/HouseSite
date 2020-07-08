@@ -1,8 +1,12 @@
 import Vue from 'vue'
 import { BootstrapVue, IconsPlugin } from 'bootstrap-vue'
 import VueRouter from 'vue-router'
+import VueLocalStorage from 'vue-localstorage'
 import 'bootstrap/dist/css/bootstrap.css'
 import 'bootstrap-vue/dist/bootstrap-vue.css'
+
+Vue.use(VueLocalStorage);
+export const ls = Vue.localStorage;
 
 import App from './App.vue'
 import store from './store.js'

@@ -1,7 +1,9 @@
 .DS_Store
 node_modules
+trips.json
 /dist
-/server/trips.json1*
+/server/trips/trips.json1*
+/server/dist
 
 # local env files
 .env.local
