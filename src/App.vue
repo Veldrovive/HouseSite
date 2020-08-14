@@ -34,6 +34,7 @@ export default {
   display: flex;
   flex-direction: column;
   background-color: #ecf0f1;
+  min-height: 0;
 }
 </style>
 

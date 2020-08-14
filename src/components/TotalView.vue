@@ -1,45 +1,38 @@
 <template>
-    <div>
-        <b-table-simple v-if="pastTrips.length > 0" striped hover sticky-header="85vh">
-            <b-thead>
-                <b-tr>
-                    <b-th>Trip Name</b-th>
-                    <b-th>Payer</b-th>
-                    <b-th>Trip Date</b-th>
-                    <b-th v-for="(person, index) in people" :key="index">{{ person }}</b-th>
-                    <b-th></b-th>
-                </b-tr>
-            </b-thead>
-            <b-tbody>
-                <b-tr v-for="(trip, index) in pastTrips" :key="index">
-                    <b-td @click="recallOldTrip(index)">{{ trip.name }}</b-td>
-                    <b-td @click="recallOldTrip(index)">{{ trip.payer }}</b-td>
-                    <b-td @click="recallOldTrip(index)">{{ trip.date.toDateString() }}</b-td>
-                    <b-td v-for="(cost, indivIndex) in trip.getIndivCost()" :key="indivIndex" @click="recallOldTrip(index)">${{ (cost.cost*1.13).toFixed(2) }}</b-td>
-                    <b-td><b-button @click="deleteOldTrip(trip.id)">Delete</b-button></b-td>
-                </b-tr>
-            </b-tbody>
-            <!-- <b-tfoot>
-                <b-tr v-for="(payee, index) in Object.keys(totalCosts)" :key="index">
-                    <b-td></b-td>
-                    <b-td></b-td>
-                    <b-td><b>Pay to {{ payee }}:</b></b-td>
-                    <b-td v-for="(person, index) in tripPeople" :key="index">${{ (totalCosts[payee][person]*1.13).toFixed(2) }} (${{ totalCosts[payee][person].toFixed(2) }})</b-td>
-                </b-tr>
-                <b-tr v-for="(payee, index) in netCosts" :key="index"></b-tr>
-            </b-tfoot> -->
-            <b-tfoot>
-                <b-tr v-for="(payee, index) in Object.keys(netCosts)" :key="index">
-                    <b-td></b-td>
-                    <b-td></b-td>
-                    <b-td><b>Pay to {{ payee }}:</b></b-td>
-                    <b-td v-for="(person, index) in tripPeople" :key="index">${{ (netCosts[payee][person]*1.13).toFixed(2) }} (${{ netCosts[payee][person].toFixed(2) }})</b-td>
-                </b-tr>
-            </b-tfoot>
-        </b-table-simple>
-        <template v-else>
-            <p id="noTripsMessage">Add a shopping trip to begin</p>
-        </template>
+    <div id="totalViewContainer">
+        <div id="tripsTableContainer">
+            <b-table-simple v-if="pastTrips.length > 0" striped hover sticky-header="100%"> 
+                <b-thead>
+                    <b-tr>
+                        <b-th>Trip Name</b-th>
+                        <b-th>Payer</b-th>
+                        <b-th>Trip Date</b-th>
+                        <b-th v-for="(person, index) in people" :key="index">{{ person }}</b-th>
+                        <b-th></b-th>
+                    </b-tr>
+                </b-thead>
+                <b-tbody>
+                    <b-tr v-for="(trip, index) in pastTrips" :key="index">
+                        <b-td @click="recallOldTrip(index)">{{ trip.name }}</b-td>
+                        <b-td @click="recallOldTrip(index)">{{ trip.payer }}</b-td>
+                        <b-td @click="recallOldTrip(index)">{{ trip.date.toDateString() }}</b-td>
+                        <b-td v-for="(cost, indivIndex) in trip.getIndivCost()" :key="indivIndex" @click="recallOldTrip(index)">${{ (cost.cost*1.13).toFixed(2) }}</b-td>
+                        <b-td><b-button @click="deleteOldTrip(trip.id)">Delete</b-button></b-td>
+                    </b-tr>
+                </b-tbody>
+                <b-tfoot>
+                    <b-tr v-for="(payee, index) in Object.keys(netCosts)" :key="index">
+                        <b-td></b-td>
+                        <b-td></b-td>
+                        <b-td><b>Pay to {{ payee }}:</b></b-td>
+                        <b-td v-for="(person, index) in tripPeople" :key="index">${{ (netCosts[payee][person]*1.13).toFixed(2) }} (${{ netCosts[payee][person].toFixed(2) }})</b-td>
+                    </b-tr>
+                </b-tfoot>
+            </b-table-simple>
+            <template v-else>
+                <p id="noTripsMessage">Add a shopping trip to begin</p>
+            </template>
+        </div>
         <b-button @click="$router.push('/shopping')" id="total_view_add_trip">Add Trip</b-button>
     </div>
 </template>
@@ -107,6 +100,24 @@ export default {
 </script>
 
 <style scoped>
+#totalViewContainer {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#total_view_add_trip {
+    width: 20%;
+    margin: 10px;
+}
+
+#tripsTableContainer {
+    flex: 1;
+    min-height: 0;
+}
+
 #noTripsMessage {
     margin: 20px;
 }

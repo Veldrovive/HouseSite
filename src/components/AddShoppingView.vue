@@ -56,12 +56,14 @@ export default {
 #container {
     display: flex;
     flex-direction: row;
+    min-height: 0;
 }
 
 #addShoppingContainer {
     flex: 1;
     display: flex;
     flex-direction: column;
+    max-height: 100%;
 }
 
 #personDropdown {
@@ -84,7 +86,8 @@ export default {
     width: 40%;
 }
 #shoppingContainer {
-    width: 60%
+    width: 60%;
+    min-height: 0;
 }
 
 .spacer {

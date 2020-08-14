@@ -1,6 +1,6 @@
 <template>
     <div id="itemsContainer">
-        <b-table-simple striped bordered hover @keyup.enter="deselect()" sticky-header="75vh">
+        <b-table-simple striped bordered hover @keyup.enter="deselect()" sticky-header="100%">
             <b-thead>
                 <b-tr>
                     <b-th>Item Name</b-th>
@@ -77,6 +77,7 @@ export default {
 <style scoped>
 #itemsContainer {
     width: 100%;
+    max-height: 100%;
     display: flex;
     flex-direction: column;
 }
