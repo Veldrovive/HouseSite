@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  house_site:
+    image: veldrovive/house
+    ports:
+      - 3006:3006
+  mongodb_container:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb_data_container:/data/db
+
+volumes:
+  mongodb_data_container:
