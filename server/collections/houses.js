@@ -10,21 +10,25 @@ export default class HouseCollection {
         this.c.createIndex({ name: 1 });
     }
 
-    async createHouse(name, userIds) {
+    async createHouse(name, ownerId, userIds) {
         if (!name) {
             throw "House must have a name";
         }
 
-        const users = []
+        const users = [ownerId]
         if (userIds) {
             // Javascript please add array comprehensions thanks
             for (const userId of userIds) {
-                users.push(new ObjectID(userId));
+                if (userId !== creatorId) {
+                    users.push(new ObjectID(userId));
+                }
             }
         }
 
         const houseObj = {
             _id: new ObjectID(),
+            owner: new ObjectID(ownerId),
+            joinRequests: [],
             name, users, trips: [], vocab: {}
         }
 
@@ -32,8 +36,46 @@ export default class HouseCollection {
         if (res.insertedCount === 0) {
             throw "Failed to create new house";
         } else {
-            return res.insertedId
+            return res.insertedId;
         }
+    }
+
+    async transferOwner(houseId, newOwnerId) {
+        houseId = new ObjectID(houseId);
+        newOwnerId = new ObjectID(newOwnerId);
+
+        const query = { _id: houseId };
+        const update = { $set: { owner: newOwnerId } };
+
+        const ownerRes = await this.c.updateOne(query, update);
+        await this.addHouseUser(houseId, newOwnerId);
+
+        return ownerRes.modifiedCount > 0;
+    }
+
+    async addUserJoinRequest(houseId, userId) {
+        houseId = new ObjectID(houseId);
+        userId = new ObjectID(userId);
+
+        const userIds = (await this.getHouse(houseId)).users.map(user => user._id.toString());
+        if (userIds.includes(userId.toString())) {
+            throw "User is already in house.";
+        }
+
+        const query = { _id: houseId };
+        const update = { $addToSet: { joinRequests: userId } };
+        const res = await this.c.updateOne(query, update);
+        return res.modifiedCount > 0;
+    }
+
+    async removeUserJoinRequest(houseId, userId) {
+        houseId = new ObjectID(houseId);
+        userId = new ObjectID(userId);
+
+        const query = { _id: houseId };
+        const update = { $pull: { joinRequests: userId } };
+        const res = await this.c.updateOne(query, update);
+        return res.modifiedCount > 0;
     }
 
     async addHouseUser(houseId, userId) {
@@ -65,24 +107,20 @@ export default class HouseCollection {
         const query = { users: userObjId }
         const options = {
             sort: { name: 1 },
-            projection: { _id: 1, name: 1, users: 1 }
+            projection: { _id: 1, name: 1, users: 1, joinRequests: 1, owner: 1 }
         }
 
-        const cursor = this.c.find(query, options);
-
-        if ((await cursor).count() === 0) {
-            return [];
-        }
-
-        const houses = []
-        await cursor.forEach(async elem => {
-            const { _id, name, users } = elem;
+        const rawHouses = await this.c.find(query, options).toArray();
+        const houses = [];
+        for (const house of rawHouses) {
+            const { _id, name, users, joinRequests, owner } = house;
             houses.push({
-                _id, name,
-                users: (await this.db.userCollection.getUsersByIds(users))
-            })
-        })
-        return houses
+                _id, name, owner,
+                users: (await this.db.userCollection.getUsersByIds(users)),
+                joinRequests: (await this.db.userCollection.getUsersByIds(joinRequests))
+            });
+        }
+        return houses;
     }
 
     async getHouse(houseId) {
@@ -92,8 +130,37 @@ export default class HouseCollection {
 
         const res = await this.c.findOne(query);
         res["users"] = await this.db.userCollection.getUsersByIds(res["users"]);
+        res["joinRequests"] = await this.db.userCollection.getUsersByIds(res["joinRequests"]);
 
         return res;
+    }
+
+    async searchHouseByName(houseName) {
+        console.log("Searching for", houseName);
+        const query = { name: houseName }
+        const options = { projection: { _id: 1 } }
+
+        const rawHouses = await this.c.find(query, options).toArray();
+
+        const houses = []
+        for (const house of rawHouses) {
+            const { name, users, owner } = await this.getHouse(house._id);
+            const ownerObj = await this.db.userCollection.getUserById(owner);
+            const ownerName = `${ownerObj.firstName} ${ownerObj.lastName}`;
+            const userNames = users.map(user => `${user.firstName} ${user.lastName}`);
+            const houseObj = {
+                name, ownerName,
+                id: house._id,
+                userNames
+            }
+            houses.push(houseObj);
+        }
+        return houses;
+    }
+
+    async getHouseUserIds(houseId) {
+        const house = await this.getHouse(houseId);
+        return house.users.map(user => user._id);
     }
 
     async updateTrip(houseId, tripId, tripData) {
@@ -209,21 +276,31 @@ export default class HouseCollection {
                 for (const item of trip.items) {
                     const { name, shortName, cost, tax } = item;
                     if (!(name in vocab)) {
-                        vocab[name] = {"shortName": new Set(), "price": new Set(), "tax": []}
+                        vocab[name] = {"shortName": {}, "cost": {}, "tax": {}}
                     }
-                    if (shortName) vocab[name]["shortName"].add(shortName);
-                    if (cost) vocab[name]["price"].add(cost);
-                    vocab[name]["tax"].push(tax);
+                    if (shortName) {
+                        if (!(shortName in vocab[name]["shortName"])) {
+                            vocab[name]["shortName"][shortName] = 0
+                        }
+                        vocab[name]["shortName"][shortName]++;
+                    }
+                    if (cost) {
+                        if (!(cost in vocab[name]["cost"])) {
+                            vocab[name]["cost"][cost] = 0
+                        }
+                        vocab[name]["cost"][cost]++;
+                    }
+                    if (tax !== undefined) {
+                        if (!(tax in vocab[name]["tax"])) {
+                            vocab[name]["tax"][tax] = 0
+                        }
+                        vocab[name]["tax"][tax]++;
+                    }
                 }
             } catch(err) {
                 console.log("Failed to iterate trips:", err);
             }
         });
-
-        for (const val of Object.values(vocab)) {
-            val.shortName = Array.from(val.shortName);
-            val.price = Array.from(val.price);
-        }
 
         const vocabQuery = { _id: houseId };
         const vocabUpdate = { $set: { vocab: vocab } }
@@ -236,12 +313,14 @@ export default class HouseCollection {
 // const houseBase = {
 //     _id: new ObjectID(),
 //     name: "Nickname for house",
+//     owner: new ObjectID(),
 //     users: [new ObjectID(),],
+//     joinRequests: [new ObjectID(),],
 //     trips: [
 //         {
 //             _id: new ObjectID(),
 //             date: new Date(),
-//             tripName: "AName",
+//             name: "AName",
 //             payer: new ObjectId(),
 //             items: [
 //                 {

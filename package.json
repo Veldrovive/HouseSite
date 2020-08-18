@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "serve": "vue-cli-service serve",
-    "backend": "nodemon server/serve.js --watch server/serve.js",
+    "backend": "nodemon server/serveV2.js --watch server/serveV2.js",
     "build": "vue-cli-service build",
     "lint": "vue-cli-service lint",
     "start": "node server/serve.js",
@@ -25,7 +25,8 @@
     "vue": "^2.6.11",
     "vue-localstorage": "^0.6.2",
     "vue-router": "^3.1.6",
-    "vuex": "^3.3.0"
+    "vuex": "^3.3.0",
+    "ws": "^7.3.1"
   },
   "devDependencies": {
     "@vue/cli-plugin-babel": "~4.3.0",

@@ -60,6 +60,29 @@ export default class UserCollection {
 
         return users.map(userData => userData.value);
     }
+
+    async getUserByToken(userToken) {
+        const query = { token: userToken };
+
+        const user = await this.c.findOne(query)
+
+        if (user) {
+            return user;
+        } else {
+            throw "No such user"
+        }
+    }
+
+    async registerLogin(userId) {
+        userId = new ObjectID(userId);
+
+        const query = { _id: userId };
+        const update = { $set: { lastLogin: new Date() } };
+
+        const res = await this.c.updateOne(query, update);
+
+        return res.modifiedCount > 0;
+    }
 }
 
 // const userBase = {

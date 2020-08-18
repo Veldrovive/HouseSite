@@ -3,7 +3,7 @@ const { MongoClient } = Mongo;
 import HouseCollection from "./collections/houses.js";
 import UserCollection from "./collections/users.js";
 
-class Database {
+export default class Database {
     static async setup(port=27017, database="house", user="root", password="rootpassword") {
         const url = `mongodb://${user}:${password}@localhost:${port}`;
         const db = new Database();
@@ -113,4 +113,4 @@ async function main() {
     });
 }
 
-main();
+// main();
