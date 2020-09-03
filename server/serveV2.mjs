@@ -5,14 +5,15 @@ import history from 'connect-history-api-fallback';
 import cors from 'cors';
 import express from 'express';
 import http from "http"
-import Connection from './connection.js';
-import Database from './db.js';
-import WebSocket from "ws";
-const { Server: WebSocketServer } = WebSocket;
+import Connection from './connection.mjs';
+import Watcher from './dbWatcher.mjs';
+import Database from './db.mjs';
+import SocketIo from "socket.io";
 
 async function main() {
     const app = express();
     const server = http.createServer(app);
+    const io = SocketIo(server);
     app.use(history());
     app.use(express.static("./dist"));
     app.use(express.json());
@@ -24,14 +25,13 @@ async function main() {
         return;
     }
 
-    var wss = new WebSocketServer({server: server, path: "/api/ws"});
-
     server.listen(PORT);
 
     const registeredUsers = {};
 
-    wss.on("connection", ws => {
-        new Connection(ws, db, registeredUsers);
+    new Watcher(db, registeredUsers);
+    io.on("connection", socket => {
+        new Connection(socket, db, registeredUsers);
     })
 }
 

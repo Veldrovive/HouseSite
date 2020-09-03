@@ -29,7 +29,7 @@ export default class HouseCollection {
             _id: new ObjectID(),
             owner: new ObjectID(ownerId),
             joinRequests: [],
-            name, users, trips: [], vocab: {}
+            name, users, imgPath: undefined, vocab: {}
         }
 
         const res = await this.c.insertOne(houseObj);
@@ -50,7 +50,18 @@ export default class HouseCollection {
         const ownerRes = await this.c.updateOne(query, update);
         await this.addHouseUser(houseId, newOwnerId);
 
-        return ownerRes.modifiedCount > 0;
+        return ownerRes.matchedCount > 0;
+    }
+
+    async setImg(houseId, imgUrl) {
+        houseId = new ObjectID(houseId);
+
+        const query = { _id: houseId };
+        const update = { $set: { imgPath: imgUrl } };
+
+        const res = await this.c.updateOne(query, update);
+
+        return res.matchedCount > 0;
     }
 
     async addUserJoinRequest(houseId, userId) {
@@ -65,7 +76,7 @@ export default class HouseCollection {
         const query = { _id: houseId };
         const update = { $addToSet: { joinRequests: userId } };
         const res = await this.c.updateOne(query, update);
-        return res.modifiedCount > 0;
+        return res.matchedCount > 0;
     }
 
     async removeUserJoinRequest(houseId, userId) {
@@ -75,7 +86,7 @@ export default class HouseCollection {
         const query = { _id: houseId };
         const update = { $pull: { joinRequests: userId } };
         const res = await this.c.updateOne(query, update);
-        return res.modifiedCount > 0;
+        return res.matchedCount > 0;
     }
 
     async addHouseUser(houseId, userId) {
@@ -87,7 +98,7 @@ export default class HouseCollection {
             const query = { _id: houseId }
             const update = { $addToSet: { users: userId } }
             const res = await this.c.updateOne(query, update);
-            return res.modifiedCount > 0;
+            return res.matchedCount > 0;
         } catch(err) {
             console.log("Errored on adding house user: ", err);
             throw "User to be added does not exist anymore";
@@ -107,17 +118,19 @@ export default class HouseCollection {
         const query = { users: userObjId }
         const options = {
             sort: { name: 1 },
-            projection: { _id: 1, name: 1, users: 1, joinRequests: 1, owner: 1 }
+            projection: { _id: 1, name: 1, users: 1, joinRequests: 1, owner: 1, imgPath: 1 }
         }
 
         const rawHouses = await this.c.find(query, options).toArray();
         const houses = [];
         for (const house of rawHouses) {
-            const { _id, name, users, joinRequests, owner } = house;
+            const { _id, name, users, joinRequests, owner, imgPath } = house;
             houses.push({
-                _id, name, owner,
+                _id, name, imgPath,
+                owner: (await this.db.userCollection.getUserById(owner)),
                 users: (await this.db.userCollection.getUsersByIds(users)),
-                joinRequests: (await this.db.userCollection.getUsersByIds(joinRequests))
+                joinRequests: (await this.db.userCollection.getUsersByIds(joinRequests)),
+                tripSummaries: (await this.db.tripCollection.getTripSummaries(_id))
             });
         }
         return houses;
@@ -131,6 +144,8 @@ export default class HouseCollection {
         const res = await this.c.findOne(query);
         res["users"] = await this.db.userCollection.getUsersByIds(res["users"]);
         res["joinRequests"] = await this.db.userCollection.getUsersByIds(res["joinRequests"]);
+        res["tripSummaries"] = await this.db.tripCollection.getTripSummaries(houseId);
+        res['owner'] = await this.db.userCollection.getUserById(res['owner']);
 
         return res;
     }
@@ -163,115 +178,14 @@ export default class HouseCollection {
         return house.users.map(user => user._id);
     }
 
-    async updateTrip(houseId, tripId, tripData) {
-        houseId = new ObjectID(houseId);
-        tripId = new ObjectID(tripId);
-
-        delete tripData._id;
-        for (const item of tripData.items) {
-            if (!("_id" in item))
-                item._id = new ObjectID();
-        }
-
-        const query = { _id: houseId, 'trips._id': tripId }
-        const update = { $set: { "trips.$": tripData } }
-
-        try {
-            const res = await this.c.updateOne(query, update);
-            await this.generateVocab(houseId);
-            return res.modifiedCount > 0 ? tripId : false;
-        } catch (err) {
-            console.log("Failed to update trip:", err);
-            throw "Failed to update trip";
-        }
-        
-    }
-
-    async addTrip(houseId, tripData) {
-        houseId = new ObjectID(houseId);
-
-        tripData._id = new ObjectID();
-        for (const item of tripData.items) {
-            if (!("_id" in item))
-                item._id = new ObjectID();
-        }
-
-        const query = { _id: houseId };
-        const update = { $push: { trips: tripData } };
-
-        const res = await this.c.updateOne(query, update);
-        await this.generateVocab(houseId);
-        return res.modifiedCount > 0 ? tripData._id : false;
-    }
-
-    async getTripSummaries(houseId) {
-        houseId = new ObjectID(houseId);
-
-        const query = { _id: houseId };
-        const options = { projection: { _id: 0, trips: 1, users: 1 } };
-
-        const { trips, users } = await this.c.findOne(query, options);
-
-        const userData = await this.db.userCollection.getUsersByIds(users);
-        const userNames = userData.map(user => `${user.firstName} ${user.lastName}`);
-
-        const userMap = _.zipObject(users, userNames);
-        
-        const summaries = [];
-        trips.forEach(async trip => {
-            const { date, tripName, payer, items } = trip;
-            const summary = {
-                date, tripName,
-                payer: userMap[payer],
-                totalCost: 0,
-                userCosts: _.zipObject(userNames, new Array(userNames.length).fill(0))
-            }
-
-            for (const item of items) {
-                const { cost, tax, splitters } = item;
-                const indivCost = (cost * (1 + tax)) / splitters.length;
-                for (const userId of splitters) {
-                    summary.userCosts[userMap[userId]] += indivCost;
-                    summary.totalCost += indivCost;
-                }
-            }
-
-            summaries.push(summary);
-        })
-        return summaries;
-    }
-
-    async getTripData(houseId, tripId) {
-        houseId = new ObjectID(houseId);
-        tripId = new ObjectID(tripId);
-
-        const query = { _id: houseId };
-        const options = { projection: { _id: 0, users: 1, trips: { $elemMatch: {_id: tripId} } } }
-
-        const res = await this.c.findOne(query, options);
-
-        const { users } = res;
-        const userData = await this.db.userCollection.getUsersByIds(users);
-        const userNames = userData.map(user => `${user.firstName} ${user.lastName}`);
-        const userMap = _.zipObject(users, userNames);
-
-        const trip = res.trips[0];
-        trip["payerName"] = userMap[trip.payer];
-        trip["userMap"] = userMap;
-
-        return trip;
-    }
-
     async generateVocab(houseId) {
         houseId = new ObjectID(houseId);
 
-        const tripsQuery = { _id: houseId };
-        const tripsOptions = { projection: { _id: 0, trips: 1 } };
-
-        const house = await this.c.findOne(tripsQuery, tripsOptions);
+        const trips = await this.db.tripCollection.getHouseTrips(houseId);
 
         const vocab = {}
-        house.trips.forEach(trip => {
+        console.log("Generating vocab for:", houseId, "with", trips.length);
+        trips.forEach(trip => {
             try{
                 for (const item of trip.items) {
                     const { name, shortName, cost, tax } = item;
@@ -306,7 +220,7 @@ export default class HouseCollection {
         const vocabUpdate = { $set: { vocab: vocab } }
 
         const vocabRes = await this.c.updateOne(vocabQuery, vocabUpdate);
-        return vocabRes.modifiedCount > 0;
+        return vocabRes.matchedCount > 0;
     }
 }
 

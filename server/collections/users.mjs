@@ -10,9 +10,9 @@ export default class UserCollection {
         this.c.createIndex( { firstName: 1, lastName: 1, active: 1, creationDate: 1, lastLogin: 1 });
     }
 
-    async addUser(token, firstName, lastName) {
+    async addUser(token, firstName, lastName, email, imgPath) {
         const doc = {
-            token, firstName, lastName,
+            token, firstName, lastName, email, imgPath,
             active: true,
             creationDate: new Date(),
             lastLogin: new Date()
@@ -81,7 +81,7 @@ export default class UserCollection {
 
         const res = await this.c.updateOne(query, update);
 
-        return res.modifiedCount > 0;
+        return res.matchedCount > 0;
     }
 }
 

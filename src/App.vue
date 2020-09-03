@@ -4,31 +4,26 @@
     <div id="mainContainer">
       <router-view></router-view>
     </div>
+    <Modals/>
   </div>
 </template>
 
 <script>
-import { mapActions, mapMutations } from 'vuex'
 import TopBar from './components/TopBar.vue'
+import Modals from './components/Modals';
 
 export default {
   name: 'App',
   components: {
-    TopBar
-  },
-  created: function() {
-    this.getOldTrips();
-    this.recallTripFromLS();
-  },
-  methods: {
-    ...mapActions("items", ["getOldTrips"]),
-    ...mapMutations("items", ["recallTripFromLS"])
+    TopBar,
+    Modals
   }
 }
 </script>
 
 <style scoped>
 #mainContainer {
+  box-shadow: 1px 0 4px #e0dfdf, -1px 0 4px #e0dfdf;
   margin: 0 15vw 0 15vw;
   flex: 1;
   display: flex;
@@ -36,14 +31,11 @@ export default {
   background-color: #ecf0f1;
   min-height: 0;
 }
-</style>
 
-<style>
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-align: center;
   color: #2c3e50;
   position: absolute;
   height: 100%;

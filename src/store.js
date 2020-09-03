@@ -4,7 +4,7 @@ import axios from 'axios'
 import shortid from 'shortid'
 import { router, ls } from './main'
 
-Vue.use(Vuex)
+Vue.use(Vuex);
 
 const people = ["Aidan", "Teresa", "Nasser", "Melisa", "Wadee", "Shebri"]
 

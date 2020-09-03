@@ -1,106 +1,109 @@
+const CLIENT_ID = "26627556060-f1t8d58sm3rdh7nm76ev0rf3hohaf4nq.apps.googleusercontent.com";
+
 import Mongo from "mongodb";
 const { ObjectID } = Mongo;
+import GoogleAuth from "google-auth-library";
+const { OAuth2Client } = GoogleAuth;
+const googleClient = new OAuth2Client(CLIENT_ID);
+
 
 export default class Connection {
-    constructor(ws, db, registeredUsers) {
+    constructor(socket, db, registeredUsers) {
         this.registeredUsers = registeredUsers;
         this.db = db;
         this.users = this.db.userCollection;
         this.houses = this.db.houseCollection;
-        this.ws = ws;
+        this.trips = this.db.tripCollection;
+        this.socket = socket;
         this.userToken = undefined;
         this.userId = undefined;
 
-        this.setupSocketMessaging();
         this.setupUnregisteredEndpoints();
+        this.setupConnectionInteractions();
     }
 
-    response(endpoint, meta) {
-        if (meta) {
-            return { endpoint, meta };
-        } else {
-            return { endpoint };
+    response(endpoint, data) {
+        let { meta, error, code } = data || {};
+        if (!code) code = error ? 400 : 200;
+        const res = {success: !error, code}
+        if (error) {
+            res.error = error;
         }
-    }
-
-    startHeartbeat() {
-        // Periodically checks whether the connection is actually still open.
+        if (meta) {
+            res.meta = meta;
+        }
+        return {endpoint, meta: res};
     }
 
     setupConnectionInteractions() {
         this.connectionInteractions = {};
-        this.addConnectionInteraction("USER_REQUEST_JOIN_YOUR_HOUSE", this.getMyHouses);
-        this.addConnectionInteraction("YOUR_USER_JOIN_REQUEST_ACCEPTED", this.getMyHouses);
-        this.addConnectionInteraction("YOUR_HOUSES_UPDATED", this.getMyHouses);
-        this.addConnectionInteraction("YOUR_TRIP_SUMMARIES_UPDATED", this.getTripSummaries);
-        this.addConnectionInteraction("YOUR_TRIP_UPDATED", this.getTrip);
+        this.addConnectionInteraction("USER_INFO_CHANGED", this.getUser);
+        this.addConnectionInteraction("USER_HOUSES_CHANGED", this.getMyHouses);
+        this.addConnectionInteraction("USER_HOUSE_CHANGED", this.getHouseInfo);
+        this.addConnectionInteraction("USER_TRIP_CHANGED", this.getTrip);
+        // this.addConnectionInteraction("USER_REQUEST_JOIN_YOUR_HOUSE", this.getMyHouses);
+        // this.addConnectionInteraction("YOUR_USER_JOIN_REQUEST_ACCEPTED", this.getMyHouses);
+        // this.addConnectionInteraction("YOUR_HOUSES_UPDATED", this.getMyHouses);
+        // this.addConnectionInteraction("YOUR_TRIP_SUMMARIES_UPDATED", this.getTripSummaries);
+        // this.addConnectionInteraction("YOUR_TRIP_UPDATED", this.getTrip);
     }
 
     addConnectionInteraction(interaction, callback) {
-        this.connectionInteractions[interaction] = callback;
+        this.connectionInteractions[interaction] = callback.bind(this);
+    }
+
+    async recieveConnectionInteraction(interaction, arg, id) {
+        console.log("Recieved connection interaction", this.userId, interaction);
+        if (interaction in this.connectionInteractions) {
+            
+            const { meta: data } = await this.connectionInteractions[interaction](arg);
+            const { success, code, error, meta } = data;
+            console.log("Interaction function returned", interaction, success, code, error);
+            if (success) {
+                this.socket.emit(interaction, { meta, id });
+            } else {
+                console.log(`Connection interaction failed: ${code} -`, error);
+            }
+        }
     }
 
     /**
      * Tells other connection objects to send an interaction to their registered user.
-     * @param {string or string[]} userIds A user id or user ids to send interaction to.
-     * @param {*} interaction The name of the interaction.
-     * @param {*} meta Data sent with the interaction.
+     * @param {string[]} userIds A user id or user ids to send interaction to.
+     * @param {string} interaction The name of the interaction.
+     * @param {any} meta Data sent with the interaction.
+     * @param {string} meta The user, house, or trip id that has been modified.
      */
-    sendConnectionInteraction(userIds, interaction, meta) {
-        function send(userId, interaction, meta) {
-            if (userId in this.registeredUsers) {
+    async sendConnectionInteraction(userIds, interaction, meta, targetId) {
+        async function send(userId, interaction, meta, targetId) {
+            if (userId in this.registeredConnections) {
                 try{
-                    this.registeredUsers[userId].recieveConnectionInteraction(interaction, meta);
+                    await this.registeredConnections[userId].recieveConnectionInteraction(interaction, meta, targetId);
                 } catch(err) {
                     console.log("Send interaction errored:", err);
                 }
             }
         }
-        try {
+        if (typeof userIds === 'string') {
+            send.bind(this)(userIds, interaction, meta, targetId);
+        } else {
             for(const userId in userIds) {
-                send(userId, interaction, meta);
-            }
-        } catch(err) {
-            send(userIds, interaction, meta);
-        }
-    }
-
-    recieveConnectionInteraction(interaction, meta) {
-        if (interaction in this.connectionInteractions) {
-            const res = this.connectionInteractions[interaction](meta);
-            if (res) {
-                if (!("endpoint" in res)) {
-                    throw "Response must have an enpoint";
-                }
-                this.ws.send(JSON.stringify(res));
+                send.bind(this)(userId, interaction, meta, targetId);
             }
         }
-    }
-
-    setupSocketMessaging() {
-        this.callbackMap = {};
-        this.ws.on("message", async data => {
-            data = JSON.parse(data);
-            const { endpoint, meta } = data;
-            if (endpoint in this.callbackMap) {
-                const res = await this.callbackMap[endpoint](meta);
-                if (res) {
-                    if (!("endpoint" in res)) {
-                        throw "Response must have an enpoint";
-                    }
-                    this.ws.send(JSON.stringify(res));
-                }
-            }
-        })
-        this.startHeartbeat();
     }
 
     on(endpoint, callback) {
-        this.callbackMap[endpoint] = callback.bind(this);
+        const emittingCallback = async (meta, clientCallback) => {
+            const res = await callback.bind(this)(meta);
+            clientCallback(res.meta);
+        }
+        this.socket.on(endpoint, emittingCallback.bind(this));
     }
 
     remove(endpoint) {
-        delete this.callbackMap[endpoint];
+        console.log("Removing", endpoint);
+        this.socket.removeAllListeners(endpoint);
     }
 
     setupUnregisteredEndpoints() {
@@ -119,6 +122,7 @@ export default class Connection {
         this.on("REG_TEST", this.testEndpoint);
         this.on("LOGOUT", this.logout);
         this.on("CREATE_HOUSE", this.createHouse);
+        this.on("SET_HOUSE_IMAGE", this.setHouseImage);
         this.on("SEARCH_HOUSE", this.searchHouse);
         this.on("JOIN_HOUSE", this.joinHouse);
         this.on("ACCEPT_JOIN_REQUEST", this.acceptJoinRequest);
@@ -149,7 +153,17 @@ export default class Connection {
 
     testEndpoint(meta) {
         console.log("Test endpoint got: ", meta);
-        return this.response("TEST_RESPONSE", "Test Response Meta");
+        return this.response("TEST_RESPONSE", { meta: "Test Response Meta" });
+    }
+
+    async googleVerify(token) {
+        const ticket = await googleClient.verifyIdToken({
+            idToken: token,
+            audience: CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
+        const userid = payload['sub'];
+        return userid;
     }
 
     /**
@@ -157,18 +171,21 @@ export default class Connection {
      * @param {string} token The google token unique identifier of the user.
      */
     async login(token) {
+        console.log("Got a login request");
         try {
-            const user = await this.users.getUserByToken(token);
+            const gId = await this.googleVerify(token);
+            const user = await this.users.getUserByToken(gId);
             this.userToken = token;
             this.userId = user._id;
             this.users.registerLogin(this.userId);
-            this.registeredUsers[this.userId] = this;
+            this.registeredUsers[this.userId.toString()] = this;
             this.removeUnregisteredEndpoints();
             this.setupRegisteredEndpoints();
-            console.log(`User logged in as ${this.userToken} ${this.userId}`);
-            return this.response("LOGIN_SUCCESSFUL", user);
+            this.recieveConnectionInteraction('USER_HOUSES_CHANGED');
+            return this.response("LOGIN_SUCCESSFUL", { meta: user });
         } catch(err) {
-            return this.response("LOGIN_FAILED", "No user of that token");
+            console.log(err);
+            return this.response("LOGIN_FAILED", { error: "No user of that token" });
         }
     }
 
@@ -186,7 +203,7 @@ export default class Connection {
 
             return this.response("LOGOUT_SUCCESSFUL");
         } catch(err) {
-            return this.response("LOGOUT_FAILED", err);
+            return this.response("LOGOUT_FAILED", { error: err });
         }
     }
 
@@ -195,20 +212,42 @@ export default class Connection {
      * @param {{token: string, firstName: string, lastName: string}} meta User data required to create a new user.
      */
     async createUser(meta) {
-        const { token, firstName, lastName } = meta;
+        const { token, firstName, lastName, email, imgPath } = meta;
         let error = "";
         if (!token) error += "token required. ";
+        let gId;
+        try {
+            gId = await this.googleVerify(token);
+        } catch(err) {
+            error += "Token rejected by google. ";
+        }
+        console.log("Got gId:", gId);
         if (!firstName) error += "firstName required. ";
         if (!lastName) error += "lastName required. ";
+        if (!email) error += "email required. "
         if (error) {
-            return this.response("CREATE_USER_FAILED", error);
+            return this.response("CREATE_USER_FAILED", { error });
         }
 
         try {
-            const res = await this.users.addUser(token, firstName, lastName);
+            const res = await this.users.addUser(gId, firstName, lastName, email, imgPath);
             return this.response("CREATE_USER_SUCCESSFUL");
-        } catch(err) {
-            return this.response("CREATE_USER_FAILED", "User exists already");
+        } catch(error) {
+            console.log(error);
+            return this.response("CREATE_USER_FAILED", { error: "Failed to insert user into database", code: 500 });
+        }
+    }
+
+    async addUserAvatar({ userId, imgBuffer}) {
+        // This should add an image to an S3 instance and then set the avatar path for the user.
+    }
+
+    async getUser(userId) {
+        try {
+            const user = await this.users.getUserById(userId);
+            return this.response('GET_USER_SUCCESSFUL', { meta: user });
+        } catch(error) {
+            return this.response('GET_USER_FAILED', { error });
         }
     }
 
@@ -217,7 +256,7 @@ export default class Connection {
      * @param {string} houseId The id of the house to check.
      */
     async isHouseOwner(houseId) {
-        const houseOwner = (await this.houses.getHouse(houseId)).owner;
+        const houseOwner = (await this.houses.getHouse(houseId)).owner._id;
         return houseOwner.equals(this.userId);
     }
 
@@ -254,10 +293,19 @@ export default class Connection {
         try {
             const houseId = await this.houses.createHouse(name, this.userId);
             const house = await this.houses.getHouse(houseId);
-            return this.response("CREATE_HOUSE_SUCCESSFUL", house);
-        } catch(err) {
-            console.log(err);
-            return this.response("CREATE_HOUSE_FAILED", err.toString())
+            return this.response("CREATE_HOUSE_SUCCESSFUL", { meta: house });
+        } catch(error) {
+            return this.response("CREATE_HOUSE_FAILED", { error });
+        }
+    }
+
+    async setHouseImage({ houseId, imgUrl }) {
+        console.log("Setting image for ", houseId, "to", imgUrl);
+        const updated = await this.houses.setImg(houseId, imgUrl);
+        if (updated) {
+            return this.response("SET_HOUSE_IMAGE_SUCCESSFULT");
+        } else {
+            return this.response("SET_HOUSE_IMAGE_FAILED", { error: "House does not exist" });
         }
     }
 
@@ -269,17 +317,15 @@ export default class Connection {
         const { houseId, ownerId } = meta;
         try {
             if (!(await this.isHouseOwner(houseId))) {
-                return this.response("TRANSFER_OWNER_FAILED", "Current user is not house owner.");
+                return this.response("TRANSFER_OWNER_FAILED", { error: "Current user is not house owner." });
             }
             if (!this.getHouseUserIds(houseId).includes(ownerId)) {
-                return this.response("TRANSFER_OWNER_FAILED", "New owner is not in the house.");
+                return this.response("TRANSFER_OWNER_FAILED", { error: "New owner is not in the house." });
             }
             const res = await this.houses.transferOwner(houseId, ownerId);
-            this.sendConnectionInteraction(this.getHouseUserIds(houseId), "YOUR_HOUSES_UPDATED", houseId);
             return this.response("TRANSFER_OWNER_SUCCESSFUL");
-        } catch(err) {
-            console.log(err);
-            return this.response("TRANSFER_OWNER_FAILED", err.toString());
+        } catch(error) {
+            return this.response("TRANSFER_OWNER_FAILED", { error });
         }
     }
 
@@ -291,14 +337,13 @@ export default class Connection {
         try {
             const added = await this.houses.addUserJoinRequest(houseId, this.userId);
             if (added) {
-                this.sendConnectionInteraction(this.getHouseUserIds(houseId), "YOUR_HOUSES_UPDATED", houseId);
                 return this.response("JOIN_HOUSE_SUCCESSFUL");
             } else {
-                return this.response("JOIN_HOUSE_FAILED", "User is already in house");
+                return this.response("JOIN_HOUSE_FAILED", { error: "User is already in house" });
             }
-        } catch(err) {
+        } catch(error) {
             console.log(err);
-            return this.response("JOIN_HOUSE_FAILED", err.toString());
+            return this.response("JOIN_HOUSE_FAILED", { error });
         }
     }
 
@@ -322,11 +367,10 @@ export default class Connection {
                 return this.response("ACCEPT_JOIN_REQUEST_FAILED", "Internal Server Error: User was not added to house");
             }
             const requestRemoved = await this.houses.removeUserJoinRequest(houseId, userId);
-            this.sendConnectionInteraction(this.getHouseUserIds(houseId), "YOUR_HOUSES_UPDATED", houseId);
-            return this.response("ACCEPT_JOIN_REQUEST_SUCCESSFUL", requestRemoved)
+            return this.response("ACCEPT_JOIN_REQUEST_SUCCESSFUL", { meta: requestRemoved })
         } catch(err) {
             console.log(err);
-            return this.response("ACCEPT_JOIN_REQUEST_FAILED", err.toString());
+            return this.response("ACCEPT_JOIN_REQUEST_FAILED", { error: err.toString() });
         }
     }
 
@@ -339,20 +383,20 @@ export default class Connection {
             const { name, houseId, memberName, memberId } = meta;
             if (name) {
                 const houses = await this.houses.searchHouseByName(name);
-                return this.response("SEARCH_HOUSE_SUCCESSFUL", houses);
+                return this.response("SEARCH_HOUSE_SUCCESSFUL", { meta: houses });
             }
             if (houseId) {
-                return this.response("SEARCH_HOUSE_FAILED", "This search criteria is not implemented");
+                return this.response("SEARCH_HOUSE_FAILED", { error: "This search criteria is not implemented" });
             }
             if (memberName) {
-                return this.response("SEARCH_HOUSE_FAILED", "This search criteria is not implemented");
+                return this.response("SEARCH_HOUSE_FAILED", { error: "This search criteria is not implemented" });
             }
             if (memberId) {
-                return this.response("SEARCH_HOUSE_FAILED", "This search criteria is not implemented");
+                return this.response("SEARCH_HOUSE_FAILED", { error: "This search criteria is not implemented" });
             }
         } catch(err) {
             console.log(err);
-            return this.response("SEARCH_HOUSE_FAILED", err.toString());
+            return this.response("SEARCH_HOUSE_FAILED", {error: err.toString() });
         }
     }
 
@@ -362,10 +406,10 @@ export default class Connection {
     async getMyHouses() {
         try {
             const houses = await this.houses.getUserHouses(this.userId);
-            return this.response("GET_MY_HOUSES_SUCCESSFUL", houses);
+            return this.response("GET_MY_HOUSES_SUCCESSFUL", { meta: houses });
         } catch(err) {
             console.log(err);
-            return this.response("GET_MY_HOUSES_FAILED", err.toString());
+            return this.response("GET_MY_HOUSES_FAILED", { error: err.toString() });
         }
     }
 
@@ -375,14 +419,20 @@ export default class Connection {
      */
     async getHouseInfo(houseId) {
         try {
-            if (!(await this.isInHouse(houseId))) {
-                return this.response("GET_HOUSE_INFO_FAILED", "User is not in house");
-            }
             const house = await this.houses.getHouse(houseId);
-            return this.response("GET_HOUSE_INFO_SUCCESSFUL", house);
+            if (!(await this.isInHouse(houseId))) {
+                house.isInHouse = false;
+                delete house["joinRequests"];
+                delete house["tripSummaries"];
+                delete house['vocab'];
+                return this.response("GET_HOUSE_INFO_SUCCESSFUL", { meta: house });
+            } else {
+                house.isInHouse = true;
+                return this.response("GET_HOUSE_INFO_SUCCESSFUL", { meta: house });
+            }
         } catch(err) {
             console.log(err);
-            return this.response("GET_HOUSE_INFO_FAILED", err.toString());
+            return this.response("GET_HOUSE_INFO_FAILED", { error: err.toString() });
         }
     }
 
@@ -395,11 +445,11 @@ export default class Connection {
             if (!(await this.isInHouse(houseId))) {
                 return this.response("GET_TRIP_SUMMARIES_FAILED", "User is not in house");
             }
-            const summaries = await this.houses.getTripSummaries(houseId);
-            return this.response("GET_TRIP_SUMMARIES_SUCCESSFUL", {houseId, summaries})
+            const summaries = await this.trips.getTripSummaries(houseId);
+            return this.response("GET_TRIP_SUMMARIES_SUCCESSFUL", { meta: {houseId, summaries} })
         } catch(err) {
             console.log(err);
-            return this.response("GET_TRIP_SUMMARIES_FAILED", err.toString());
+            return this.response("GET_TRIP_SUMMARIES_FAILED", { error: err.toString() });
         }
     }
 
@@ -407,17 +457,18 @@ export default class Connection {
      * Responds with the trip data for a specific trip of a house the current user is in.
      * @param {{houseId: string, tripId: string}} meta The house and trip id to get.
      */
-    async getTrip(meta) {
-        const { houseId, tripId } = meta;
+    async getTrip(tripId) {
+        // const { houseId, tripId } = meta;
         try {
+            const trip = await this.trips.getTripData(tripId);
+            const houseId = trip.houseId;
             if (!(await this.isInHouse(houseId))) {
-                return this.response("GET_TRIP_FAILED", "User is not in house");
+                return this.response("GET_TRIP_FAILED", { error: "User is not in house" });
             }
-            const trip = await this.houses.getTripData(houseId, tripId);
-            return this.response("GET_TRIP_SUCCESSFUL", trip);
+            return this.response("GET_TRIP_SUCCESSFUL", { meta: trip });
         } catch(err) {
             console.log(err);
-            return this.response("GET_TRIP_FAILED", err.toString());
+            return this.response("GET_TRIP_FAILED", { error: err.toString() });
         }
     }
 
@@ -431,6 +482,7 @@ export default class Connection {
      */
     async constructTrip(houseId, tripDate, tripName, payer, items) {
         const houseUsers = (await this.houses.getHouseUserIds(houseId)).map(id => id.toString());
+        console.log(payer, houseUsers);
         tripDate = new Date(tripDate);
         if (!tripDate || isNaN(tripDate.getTime())) throw "Trip date is malformed";
         if (!payer || !(await this.isInHouse(houseId, payer))) {
@@ -440,6 +492,7 @@ export default class Connection {
             throw "Trip must have a name"
         }
         const trip = {
+            active: true,
             date: tripDate,
             name: tripName,
             payer: new ObjectID(payer),
@@ -478,19 +531,17 @@ export default class Connection {
         try {
             const trip = await this.constructTrip(houseId, tripDate, tripName, payer, items);
             if (!(await this.isInHouse(houseId))) {
-                return this.response("ADD_TRIP_FAILED", "User is not in house");
+                return this.response("ADD_TRIP_FAILED", { error: "User is not in house" });
             }
-            const res = await this.houses.addTrip(houseId, trip);
+            const res = await this.trips.addTrip(houseId, trip);
             if (!res) {
-                return this.response("ADD_TRIP_FAILED", "Internal Server Error: addTrip failed");
+                return this.response("ADD_TRIP_FAILED", { error: "Internal Server Error: addTrip failed", code: 500 });
             }
-            this.sendConnectionInteraction(this.getHouseUserIds(houseId), "YOUR_TRIP_SUMMARIES_UPDATED", houseId);
-            this.sendConnectionInteraction(this.getHouseUserIds(houseId), "YOUR_TRIP_UPDATED", meta);
-            return this.response("ADD_TRIP_SUCCESSFUL", res);
+            return this.response("ADD_TRIP_SUCCESSFUL", { meta: res });
             // This should also update the user with the newest house summaries and maybe also spawn a get trip and let the user handle if it is the currently viewed trip
         } catch(err) {
             console.log(err);
-            return this.response("ADD_TRIP_FAILED", err.toString());
+            return this.response("ADD_TRIP_FAILED", { error: err.toString() });
         }
     }
 
@@ -501,21 +552,17 @@ export default class Connection {
     async updateTrip(meta) {
         const { houseId, tripId, tripDate, tripName, payer, items } = meta;
         try {
-            const trip = await this.constructTrip(houseId, tripDate, tripName, payer, items);
-
             if (!(await this.isInHouse(houseId))) {
-                return this.response("UPDATE_TRIP_FAILED", "User is not in house");
+                return this.response("UPDATE_TRIP_FAILED", { error: "User is not in house" });
             }
-            const res = await this.houses.updateTrip(houseId, tripId, trip);
+            const res = await this.trips.updateTrip(tripId, {date: tripDate, name: tripName, payer, items});
             if (!res) {
-                return this.response("UPDATE_TRIP_FAILED", "Internal Server Error: udpateTrup failed");
+                return this.response("UPDATE_TRIP_FAILED", { error: "Internal Server Error: udpateTrup failed", code: 500 });
             }
-            this.sendConnectionInteraction(this.getHouseUserIds(houseId), "YOUR_TRIP_SUMMARIES_UPDATED", houseId);
-            this.sendConnectionInteraction(this.getHouseUserIds(houseId), "YOUR_TRIP_UPDATED", meta);
-            return this.response("ADD_TRIP_SUCCESSFUL", res);
+            return this.response("ADD_TRIP_SUCCESSFUL", { meta: res });
         } catch(err) {
             console.log(err);
-            return this.response("UPDATE_TRIP_FAILED", err.toString());
+            return this.response("UPDATE_TRIP_FAILED", { error: err.toString() });
         }
     }
 
@@ -526,13 +573,13 @@ export default class Connection {
     async getVocab(houseId) {
         try {
             if (!(await this.isInHouse(houseId))) {
-                return this.response("GET_VOCAB_FAILED", "User is not in house.");
+                return this.response("GET_VOCAB_FAILED", { error: "User is not in house." });
             }
             const vocab = (await this.houses.getHouse(houseId)).vocab;
-            return this.response("GET_VOCAB_SUCCESSFUL", vocab);
+            return this.response("GET_VOCAB_SUCCESSFUL", { meta: vocab });
         } catch(err) {
             console.log(err);
-            return this.response("GET_VOCAB_FAILED", err.toString());
+            return this.response("GET_VOCAB_FAILED", { error: err.toString() });
         }
     }
 }
