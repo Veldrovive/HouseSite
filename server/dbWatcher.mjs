@@ -28,9 +28,14 @@ export default class Watcher {
         if (typeof userIds === 'string') {
             send.bind(this)(userIds, interaction, meta, targetId);
         } else {
-            for(const userId of userIds) {
-                // console.log("Sending interaction to", userId);
-                send.bind(this)(userId, interaction, meta, targetId);
+            try {
+                for(const userId of userIds) {
+                    // console.log("Sending interaction to", userId);
+                    send.bind(this)(userId, interaction, meta, targetId);
+                }
+            } catch (err) {
+                console.log("Failed to iterate over userIds:", err);
+                console.log(userIds);
             }
         }
     }
