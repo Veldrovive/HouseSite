@@ -85,7 +85,7 @@ export default class Watcher {
             const fullDocument = change.fullDocument;
             if (operationType === 'insert') {
                 const houseId = fullDocument.houseId;
-                const userIds = this.db.houseCollection.getHouseUserIds(houseId);
+                const userIds = await this.db.houseCollection.getHouseUserIds(houseId);
                 this.sendConnectionInteraction(userIds, 'USER_HOUSES_CHANGED', houseId, changeId);
                 this.sendConnectionInteraction(userIds, "USER_HOUSE_CHANGED", houseId, changeId);
             } 
