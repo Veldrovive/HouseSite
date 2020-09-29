@@ -5,7 +5,7 @@
             <b-navbar-nav id="nav">
                 <b-nav-item to="/profile">Home</b-nav-item>
                 <!-- <b-nav-item id="resetButton" @click="resetTrip">Reset Shopping</b-nav-item> -->
-                <GoogleLogin id="loginButton" :params=params :onSuccess=onSuccess :onCurrentUser=onCurrentUser></GoogleLogin>
+                <GoogleLogin id="loginButton" class='btn btn-secondary' :params=params :onSuccess=onSuccess :onCurrentUser=onCurrentUser>Login</GoogleLogin>
             </b-navbar-nav>
         </b-navbar>
     </div>

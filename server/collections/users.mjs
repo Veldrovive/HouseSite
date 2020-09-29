@@ -1,10 +1,12 @@
 import Mongo from "mongodb";
 const { ObjectID } = Mongo;
+const env = process.env.NODE_ENV || 'development';
 
 export default class UserCollection {
     constructor(db) {
         this.db = db;
-        this.c = db.inst.collection("users");
+        const collectionName = env === 'development' ? 'users-dev' : 'users';
+        this.c = db.inst.collection(collectionName);
 
         this.c.createIndex( { "token": 1 }, { unique: true });
         this.c.createIndex( { firstName: 1, lastName: 1, active: 1, creationDate: 1, lastLogin: 1 });

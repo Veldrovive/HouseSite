@@ -1,6 +1,5 @@
 const PORT = 3006
 
-import path from 'path';
 import history from 'connect-history-api-fallback';
 import cors from 'cors';
 import express from 'express';
@@ -9,6 +8,10 @@ import Connection from './connection.mjs';
 import Watcher from './dbWatcher.mjs';
 import Database from './db.mjs';
 import SocketIo from "socket.io";
+import config from 'config';
+
+const dbConfig = config.get('dbConfig');
+console.log("Using database config:", dbConfig);
 
 async function main() {
     const app = express();
@@ -19,10 +22,16 @@ async function main() {
     app.use(express.json());
     app.use(cors());
 
-    const db = await Database.setup();
+    const db = await Database.setup({ 
+        database: dbConfig.cluster,
+        user: dbConfig.user, 
+        password: dbConfig.password
+    });
     if (!db) {
         console.log("Failed to get database");
         return;
+    } else {
+        console.log("Connected to database");
     }
 
     server.listen(PORT);

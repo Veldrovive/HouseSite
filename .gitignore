@@ -5,6 +5,9 @@ trips.json
 /server/trips/trips.json1*
 /server/dist
 
+config/*
+!config/default.json
+
 # local env files
 .env.local
 .env.*.local

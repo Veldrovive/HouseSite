@@ -17,7 +17,6 @@
             <div id='header' v-else :style='headerStyle'>
                 <h5 @click='showMain'>{{ house.name }}</h5>
                 <div>
-                    <b-button id='addTripButton' @click='showAddTrip' v-if='isInHouse'>Add Trip</b-button>
                     <b-button id='addTripButton' @click='showTrips' v-if='isInHouse'>Trips</b-button>
                     <b-button id='addTripButton' @click='showJoinRequests' v-if='isOwner'>Join Requests <b-badge variant="light" v-if='joinRequests.length > 0'>{{ joinRequests.length }}</b-badge></b-button>
                     <b-button id='addImageButton' v-if='isOwner' @click='showSetHouseImg'>Set House Image</b-button>
@@ -37,7 +36,7 @@
                     404 page?
                 </div>
                 <div v-if='addingJSON'>
-                    <textarea id='jsonAddBox' @dblclick='addJSON($event.target.value)'></textarea>
+                    <textarea id='jsonAddBox' @dblclick='addJSON($event.target.value)'>{"userIdMap": {"Aidan": "5f51a701dfe4d4bc4c378aab", "Teresa": "5f51a70adfe4d4bc4c378aac", "Nasser": "5f51a71edfe4d4bc4c378aae", "Melisa": "5f51a713dfe4d4bc4c378aad", "Wadee": "5f51a729dfe4d4bc4c378aaf", "Shebri": "5f51a732dfe4d4bc4c378ab0"}, "trips": }</textarea>
                 </div>
             </div>
             <div id='searchedHouse' v-else>
@@ -118,7 +117,7 @@ export default {
         }
     },
     methods: {
-        ...mapActions('house', ['setCurrentHouse', 'requestJoinCurrentHouse']),
+        ...mapActions('house', ['setCurrentHouse', 'requestJoinCurrentHouse', 'addTrip']),
         ...mapMutations('house', ['houseIdDeselected']),
         ...mapMutations('modals/setHouseImg', ['showSetHouseImg']),
         showAddTrip() {
@@ -149,9 +148,44 @@ export default {
         addTripsJSON() {
             this.addingJSON = !this.addingJSON;
         },
-        addJSON(json) {
-            const trips = JSON.parse(json);
-            console.log("Adding", trips);
+        sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        },
+        async addJSON(json) {
+            const { trips, userIdMap } = JSON.parse(json);
+            console.log("Adding", trips, userIdMap);
+            const nTrips = [];
+            for (const trip of trips) {
+                const tripDate = new Date(trip.date);
+                const tripName = trip.name;
+                const payer = userIdMap[trip.payer];
+                if (!payer) {
+                    throw `${trip.payer} is not in id map.`
+                }
+                const items = trip.items.map(itemObj => {
+                    const name = itemObj.itemName;
+                    const cost = itemObj.itemCost;
+                    const tax = 0.13;
+                    const splitters = itemObj.costSpliters.map(person => {
+                        const id = userIdMap[person];
+                        if (!id) {
+                            throw `${person} is not in id map.`
+                        }
+                        return id;
+                    })
+                    return {name, cost, tax, splitters};
+                });
+                console.log("Trip:", {tripDate, tripName, payer, items});
+                nTrips.push({tripDate, tripName, payer, items});
+            }
+            let counter = 0;
+            for (const trip of nTrips) {
+                this.addTrip(trip);
+                counter++;
+                console.log(`${counter}/${nTrips.length} (${counter/nTrips.length})`);
+                await this.sleep(1000);
+            }
+            console.log("Done");
         }
     }
 }

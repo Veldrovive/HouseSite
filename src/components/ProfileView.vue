@@ -111,10 +111,10 @@ export default {
                         label: 'Net Owed',
                         data: this.historicalOwedInfo.map(owed => ({t: new Date(owed.date), y: owed.totalOwed, ...owed})),
                         backgroundColor: 'rgba(0, 0, 0, 0)',
-                        borderColor: '#000000'
+                        borderColor: '#000000',
+                        lineTension: 0.2
                     }]
                 }
-                console.log(this.datacollection);
             } else {
                 this.datacollection = {};
             }

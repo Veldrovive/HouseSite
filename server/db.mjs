@@ -4,10 +4,13 @@ import HouseCollection from "./collections/houses.mjs";
 import UserCollection from "./collections/users.mjs";
 import TripCollection from "./collections/trips.mjs";
 
+const env = process.env.NODE_ENV || 'development';
+
 export default class Database {
-    static async setup(port=27017, database="house", user="root", password="rootpassword") {
+    static async setup(connectionData) {
+        const { database="house", user="root", password="rootpassword" } = connectionData;
         // const url = `mongodb://${user}:${password}@localhost:${port}`;
-        const url = "mongodb+srv://house:masc1234@house.fmt4g.mongodb.net/?retryWrites=true&w=majority"
+        const url = `mongodb+srv://${user}:${password}@${database}.fmt4g.mongodb.net/?retryWrites=true&w=majority`
         const db = new Database();
         const client = await MongoClient.connect(url, { useUnifiedTopology: true })
             .catch(err => console.log("Failed to connect to database due to:", err));

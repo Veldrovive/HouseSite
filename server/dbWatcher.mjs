@@ -29,7 +29,7 @@ export default class Watcher {
             send.bind(this)(userIds, interaction, meta, targetId);
         } else {
             for(const userId of userIds) {
-                console.log("Sending interaction to", userId);
+                // console.log("Sending interaction to", userId);
                 send.bind(this)(userId, interaction, meta, targetId);
             }
         }
@@ -42,16 +42,15 @@ export default class Watcher {
             const changeId = change.documentKey._id.toString();
             const operationType = change.operationType;
             const fullDocument = change.fullDocument;
-            console.log("A house document changed: ", changeId, operationType, change);
             if (operationType === 'insert') {
                 // Then the owner has created a new house.
                 const userIds = fullDocument.users;
-                console.log("Sending house update to: ", userIds);
+                // console.log("Sending house update to: ", userIds);
                 this.sendConnectionInteraction(userIds, 'USER_HOUSES_CHANGED', changeId, changeId);
             }
             if (operationType === 'update' || operationType === 'replace') {
                 const userIds = fullDocument.users;
-                console.log("Sending house update to: ", userIds);
+                // console.log("Sending house update to: ", userIds);
                 this.sendConnectionInteraction(userIds, 'USER_HOUSES_CHANGED', changeId, changeId);
                 this.sendConnectionInteraction(userIds, "USER_HOUSE_CHANGED", changeId, changeId);
             }

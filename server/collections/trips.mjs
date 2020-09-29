@@ -1,11 +1,13 @@
 import Mongo from "mongodb";
 const { ObjectID } = Mongo;
 import _ from 'lodash';
+const env = process.env.NODE_ENV || 'development';
 
 export default class TripCollection {
     constructor(db) {
         this.db = db;
-        this.c = db.inst.collection("trips");
+        const collectionName = env === 'development' ? 'trips-dev' : 'trips';
+        this.c = db.inst.collection(collectionName);
 
         this.c.createIndex( { houseId: 1, date: 1, name: 1, payer: 1 });
     }
@@ -29,10 +31,10 @@ export default class TripCollection {
         console.log("All users", houseUsers);
         for (const item of items) {
             let { name, cost, tax, shortName, splitters } = item;
-            if (!name || typeof name !== "string") throw `All items must have a name`;
-            if (!cost || typeof cost !== "number") throw `${name} must have a cost`;
+            if (!name || typeof name !== "string") name = 'No Name';
+            if (!cost || typeof cost !== "number") cost = 0;
             if (tax === undefined || typeof tax !== "number") tax = 0;
-            if (!splitters || splitters.length < 1) throw `${name} must have at least one cost splitter`;
+            if (!splitters || splitters.length < 1) splitters = [];
             for (const splitter of splitters) {
                 console.log("This splitter", splitter);
                 if (!houseUsers.includes(splitter.toString())) throw `All cost splitters for ${name} must be in the house`;

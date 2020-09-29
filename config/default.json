@@ -1,0 +1,7 @@
+{
+    "dbConfig": {
+        "user": "USERNAME",
+        "password": "PASSWORD",
+        "cluster": "CLUSTER_NAME"
+    }
+}

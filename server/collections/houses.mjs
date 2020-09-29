@@ -1,11 +1,13 @@
 import Mongo from "mongodb";
 import _ from "lodash";
 const { ObjectID } = Mongo;
+const env = process.env.NODE_ENV || 'development';
 
 export default class HouseCollection {
     constructor(db) {
         this.db = db;
-        this.c = db.inst.collection("houses");
+        const collectionName = env === 'development' ? 'houses-dev' : 'houses';
+        this.c = db.inst.collection(collectionName);
 
         this.c.createIndex({ name: 1 });
     }
